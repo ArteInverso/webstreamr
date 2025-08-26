@@ -1,0 +1,57 @@
+name: Build, Push, and Release
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # Permiso para subir la imagen a GitHub Packages
+      issues: write
+
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Log in to the GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # FIX 1: Usar docker/metadata-action para generar etiquetas válidas y en minúsculas
+      - name: Extract Docker metadata
+        id: meta # Le damos un ID para referirnos a sus resultados
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+
+      # FIX 2: Usar los resultados (outputs) de la acción de metadatos
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }} # Usar las etiquetas generadas
+          labels: ${{ steps.meta.outputs.labels }} # Usar las etiquetas de metadatos generadas
+
+  release-please:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: build-and-push # Ejecutar después de que la imagen se construya
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Run Release Please
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          release-type: node
